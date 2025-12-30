@@ -1,248 +1,329 @@
 """
-Utility functions for AKI prediction project.
+Utility functions for visualization and analysis.
 """
 
-import logging
 from pathlib import Path
 
+import cv2
+import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
+import seaborn as sns
+import torch
 
 
-def setup_logging(log_file: Path | None = None) -> logging.Logger:
+def denormalize_image(
+    tensor: torch.Tensor,
+    mean: tuple[float, float, float] = (0.3403, 0.3121, 0.3214),
+    std: tuple[float, float, float] = (0.2724, 0.2608, 0.2669),
+) -> np.ndarray:
     """
-    Set up logging configuration.
+    Denormalize an image tensor for visualization.
 
     Args:
-        log_file: Optional path to log file
+        tensor: Normalized image tensor (C, H, W)
+        mean: Mean used for normalization
+        std: Std used for normalization
 
     Returns:
-        Configured logger
+        Denormalized image as numpy array (H, W, C)
     """
-    logger = logging.getLogger("aki_prediction")
-    logger.setLevel(logging.INFO)
+    img: torch.Tensor = tensor.clone()
 
-    # Console handler
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    formatter = logging.Formatter(
-        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # Denormalize
+    for t, m, s in zip(img, mean, std, strict=True):
+        t.mul_(s).add_(m)
+
+    # Convert to numpy and transpose to (H, W, C)
+    img = img.numpy().transpose(1, 2, 0)
+
+    img = np.clip(img, 0, 1)
+
+    return img
+
+
+def overlay_heatmap(
+    image: np.ndarray,
+    heatmap: np.ndarray,
+    alpha: float = 0.5,
+    colormap: int = cv2.COLORMAP_JET,
+) -> np.ndarray:
+    """
+    Overlay a heatmap on an image.
+
+    Args:
+        image: Original image (H, W, C) in range [0, 1]
+        heatmap: Heatmap (H, W) in range [0, 1]
+        alpha: Blending factor
+        colormap: OpenCV colormap
+
+    Returns:
+        Overlayed image
+    """
+    # Resize heatmap to match image size
+    if heatmap.shape != image.shape[:2]:
+        heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+
+    heatmap_uint8 = (heatmap * 255).astype(np.uint8)
+
+    # Apply colormap
+    heatmap_colored = cv2.applyColorMap(heatmap_uint8, colormap)
+    heatmap_colored = cv2.cvtColor(heatmap_colored, cv2.COLOR_BGR2RGB)
+    heatmap_colored = heatmap_colored.astype(np.float32) / 255.0
+
+    if image.dtype == np.uint8:
+        image = image.astype(np.float32) / 255.0
+
+    # Blend
+    overlayed = alpha * heatmap_colored + (1 - alpha) * image
+    overlayed = np.clip(overlayed, 0, 1)
+
+    return overlayed
+
+
+def plot_xai_comparison(
+    image: np.ndarray,
+    explanations: dict[str, np.ndarray],
+    title: str = "XAI Method Comparison",
+    save_path: Path | None = None,
+) -> None:
+    """
+    Plot comparison of different XAI methods.
+
+    Args:
+        image: Original image
+        explanations: Dictionary with method names as keys and heatmaps as values
+        title: Plot title
+        save_path: Optional path to save figure
+    """
+    num_methods = len(explanations)
+    _, axes = plt.subplots(1, num_methods + 1, figsize=(4 * (num_methods + 1), 4))
+
+    # original image
+    axes[0].imshow(image)
+    axes[0].set_title("Original Image")
+    axes[0].axis("off")
+
+    # explanations
+    for idx, (method_name, heatmap) in enumerate(explanations.items(), start=1):
+        overlayed = overlay_heatmap(image, heatmap)
+        axes[idx].imshow(overlayed)
+        axes[idx].set_title(method_name)
+        axes[idx].axis("off")
+
+    plt.suptitle(title, fontsize=16)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    plt.show()
+
+
+def plot_class_aggregated_cam(
+    aggregated_heatmaps: dict[int, np.ndarray],
+    class_names: dict[int, str] | None = None,
+    num_classes_to_show: int = 10,
+    save_path: Path | None = None,
+) -> None:
+    """
+    Plot aggregated CAM heatmaps for multiple classes.
+
+    Args:
+        aggregated_heatmaps: Dictionary mapping class_id to aggregated heatmap
+        class_names: Optional mapping of class_id to class name
+        num_classes_to_show: Number of classes to display
+        save_path: Optional path to save figure
+    """
+    classes_to_plot = list(aggregated_heatmaps.keys())[:num_classes_to_show]
+
+    num_cols = 5
+    num_rows = (len(classes_to_plot) + num_cols - 1) // num_cols
+
+    _, axes = plt.subplots(num_rows, num_cols, figsize=(15, 3 * num_rows))
+    axes = axes.flatten() if num_rows > 1 else [axes] if num_cols == 1 else axes
+
+    for idx, class_id in enumerate(classes_to_plot):
+        heatmap = aggregated_heatmaps[class_id]
+
+        axes[idx].imshow(heatmap, cmap="jet")
+
+        title = f"Class {class_id}"
+        if class_names and class_id in class_names:
+            title += f"\n{class_names[class_id]}"
+
+        axes[idx].set_title(title, fontsize=10)
+        axes[idx].axis("off")
+
+    # Hide unused subplots
+    for idx in range(len(classes_to_plot), len(axes)):
+        axes[idx].axis("off")
+
+    plt.suptitle("Aggregated Grad-CAM by Class", fontsize=16)
+    plt.tight_layout()
+
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    plt.show()
+
+
+def plot_confusion_matrix(
+    y_true: np.ndarray,
+    y_pred: np.ndarray,
+    class_names: list[str] | None = None,
+    normalize: bool = True,
+    save_path: Path | None = None,
+) -> None:
+    """
+    Plot confusion matrix.
+
+    Args:
+        y_true: True labels
+        y_pred: Predicted labels
+        class_names: Optional class names
+        normalize: Whether to normalize
+        save_path: Optional path to save figure
+    """
+    from sklearn.metrics import confusion_matrix
+
+    cm = confusion_matrix(y_true, y_pred)
+
+    if normalize:
+        cm = cm.astype("float") / cm.sum(axis=1)[:, np.newaxis]
+
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(
+        cm,
+        annot=False,
+        fmt=".2f" if normalize else "d",
+        cmap="Blues",
+        xticklabels=class_names if class_names else range(len(cm)),
+        yticklabels=class_names if class_names else range(len(cm)),
+        cbar_kws={"label": "Proportion" if normalize else "Count"},
     )
-    console_handler.setFormatter(formatter)
-    logger.addHandler(console_handler)
 
-    # File handler
-    if log_file:
-        file_handler = logging.FileHandler(log_file)
-        file_handler.setLevel(logging.DEBUG)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
+    plt.xlabel("Predicted Label")
+    plt.ylabel("True Label")
+    plt.title("Confusion Matrix" + (" (Normalized)" if normalize else ""))
+    plt.tight_layout()
 
-    return logger
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    plt.show()
 
 
-def read_mimic_csv(
-    filepath: Path,
-    columns: list[str] | None = None,
-    chunk_size: int | None = None,
-    filters: dict | None = None,
-) -> pd.DataFrame:
+def visualize_model_predictions(
+    model: torch.nn.Module,
+    dataset: torch.utils.data.Dataset,
+    num_samples: int = 16,
+    device: str = "cuda",
+    class_names: dict[int, str] | None = None,
+    save_path: Path | None = None,
+) -> None:
     """
-    Read MIMIC CSV file (compressed or not) with optional filtering.
+    Visualize model predictions on sample images.
 
     Args:
-        filepath: Path to CSV file (.csv or .csv.gz)
-        columns: Specific columns to read (None = all)
-        chunk_size: Read in chunks to save memory
-        filters: Dictionary of {column: values} to filter rows
-
-    Returns:
-        DataFrame with loaded data
+        model: Trained model
+        dataset: Dataset to sample from
+        num_samples: Number of samples to show
+        device: Device
+        class_names: Optional class names
+        save_path: Optional path to save figure
     """
-    logger = logging.getLogger("aki_prediction")
-    logger.info(f"Reading {filepath.name}...")
+    model.eval()
 
-    if not chunk_size:
-        df = pd.read_csv(filepath, usecols=columns)
-        if filters:
-            for col, values in filters.items():
-                df = df[df[col].isin(values)]
-        return df
+    # Sample random indices
+    indices = np.random.choice(len(dataset), num_samples, replace=False)
 
-    # Read in chunks
-    chunks = []
-    for chunk in pd.read_csv(filepath, usecols=columns, chunksize=chunk_size):
-        if filters:
-            for col, values in filters.items():
-                chunk = chunk[chunk[col].isin(values)]
-        chunks.append(chunk)
+    num_cols = 4
+    num_rows = (num_samples + num_cols - 1) // num_cols
 
-    return pd.concat(chunks, ignore_index=True)
+    _, axes = plt.subplots(num_rows, num_cols, figsize=(12, 3 * num_rows))
+    axes = axes.flatten()
 
+    with torch.no_grad():
+        for idx, sample_idx in enumerate(indices):
+            image_tensor, true_label = dataset[sample_idx]
 
-def save_processed_data(
-    df: pd.DataFrame,
-    filename: str,
-    output_dir: Path,
-) -> Path:
-    """
-    Save processed DataFrame to parquet format.
+            # Get prediction
+            image_batch = image_tensor.unsqueeze(0).to(device)
+            output = model(image_batch)
+            probabilities = torch.softmax(output, dim=1)
+            pred_label = torch.argmax(output, dim=1).item()
+            confidence = probabilities[0, pred_label].item()
 
-    Args:
-        df: DataFrame to save
-        filename: Output filename (without extension)
-        output_dir: Output directory
+            # Denormalize image for visualization
+            image = denormalize_image(image_tensor)
 
-    Returns:
-        Path to saved file
-    """
-    output_dir.mkdir(parents=True, exist_ok=True)
-    output_path = output_dir / f"{filename}.parquet"
-    df.to_parquet(output_path, index=False, compression="gzip")
+            # Plot
+            axes[idx].imshow(image)
 
-    logger = logging.getLogger("aki_prediction")
-    logger.info(f"Saved {len(df)} rows to {output_path}")
+            true_name = class_names[true_label] if class_names else str(true_label)
+            pred_name = class_names[pred_label] if class_names else str(pred_label)
 
-    return output_path
+            color = "green" if pred_label == true_label else "red"
+            title = f"True: {true_name}\nPred: {pred_name} ({confidence:.2f})"
 
+            axes[idx].set_title(title, color=color, fontsize=9)
+            axes[idx].axis("off")
 
-def load_processed_data(filepath: Path) -> pd.DataFrame:
-    """
-    Load processed data from parquet format.
+    for idx in range(num_samples, len(axes)):
+        axes[idx].axis("off")
 
-    Args:
-        filepath: Path to parquet file
+    plt.suptitle("Model Predictions", fontsize=16)
+    plt.tight_layout()
 
-    Returns:
-        Loaded DataFrame
-    """
-    logger = logging.getLogger("aki_prediction")
-    logger.info(f"Loading {filepath.name}...")
-    return pd.read_parquet(filepath)
+    if save_path:
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+    plt.show()
 
 
-def convert_time_to_hours(
-    time_col: pd.Series,
-    reference_time: pd.Series,
-) -> pd.Series:
-    """
-    Convert datetime difference to hours since reference time.
-
-    Args:
-        time_col: Time column to convert
-        reference_time: Reference time (e.g., ICU admission time)
-
-    Returns:
-        Hours since reference time
-    """
-    time_diff = pd.to_datetime(time_col) - pd.to_datetime(reference_time)
-    return time_diff.dt.total_seconds() / 3600
-
-
-def get_memory_usage(df: pd.DataFrame) -> str:
-    """
-    Get human-readable memory usage of DataFrame.
-
-    Args:
-        df: DataFrame to check
-
-    Returns:
-        Memory usage string
-    """
-    memory_bytes = df.memory_usage(deep=True).sum()
-
-    for unit in ["B", "KB", "MB", "GB"]:
-        if memory_bytes < 1024:
-            return f"{memory_bytes:.2f} {unit}"
-        memory_bytes /= 1024
-
-    return f"{memory_bytes:.2f} TB"
-
-
-def reduce_mem_usage(df: pd.DataFrame, verbose: bool = True) -> pd.DataFrame:
-    """
-    Reduce memory usage by downcasting numeric types.
-
-    Args:
-        df: DataFrame to optimize
-        verbose: Print memory reduction info
-
-    Returns:
-        Memory-optimized DataFrame
-    """
-    start_mem = df.memory_usage(deep=True).sum() / 1024**2
-
-    for col in df.columns:
-        col_type = df[col].dtype
-
-        if pd.api.types.is_numeric_dtype(col_type):
-            c_min = df[col].min()
-            c_max = df[col].max()
-
-            # Machine limits for numeric types.
-            if pd.api.types.is_integer_dtype(col_type):
-                if c_min > np.iinfo(np.int8).min and c_max < np.iinfo(np.int8).max:
-                    df[col] = df[col].astype(np.int8)
-                elif c_min > np.iinfo(np.int16).min and c_max < np.iinfo(np.int16).max:
-                    df[col] = df[col].astype(np.int16)
-                elif c_min > np.iinfo(np.int32).min and c_max < np.iinfo(np.int32).max:
-                    df[col] = df[col].astype(np.int32)
-                elif c_min > np.iinfo(np.int64).min and c_max < np.iinfo(np.int64).max:
-                    df[col] = df[col].astype(np.int64)
-            else:  # float
-                if (
-                    c_min > np.finfo(np.float32).min
-                    and c_max < np.finfo(np.float32).max
-                ):
-                    df[col] = df[col].astype(np.float32)
-                else:
-                    df[col] = df[col].astype(np.float64)
-
-    end_mem = df.memory_usage(deep=True).sum() / 1024**2
-
-    if verbose:
-        logger = logging.getLogger("aki_prediction")
-        reduction = 100 * (start_mem - end_mem) / start_mem
-        logger.info(
-            f"Memory reduced from {start_mem:.2f}MB to {end_mem:.2f}MB "
-            f"({reduction:.1f}% reduction)"
-        )
-
-    return df
-
-
-def calculate_age(birth_date: pd.Series, reference_date: pd.Series) -> pd.Series:
-    """
-    Calculate age in years from birth date and reference date.
-
-    Args:
-        birth_date: Birth dates
-        reference_date: Reference dates (e.g., admission date)
-
-    Returns:
-        Age in years
-    """
-    birth = pd.to_datetime(birth_date)
-    reference = pd.to_datetime(reference_date)
-    age = (reference - birth).dt.days / 365.25
-    return age.round(1)
-
-
-def print_dataframe_info(df: pd.DataFrame, name: str = "DataFrame") -> None:
-    """
-    Print useful information about a DataFrame.
-
-    Args:
-        df: DataFrame to inspect
-        name: Name to display
-    """
-    logger = logging.getLogger("aki_prediction")
-    logger.info(f"\n{'=' * 60}")
-    logger.info(f"{name} Info:")
-    logger.info(f"{'=' * 60}")
-    logger.info(f"Shape: {df.shape}")
-    logger.info(f"Memory: {get_memory_usage(df)}")
-    logger.info(f"\nColumns: {list(df.columns)}")
-    logger.info(f"\nMissing values:\n{df.isnull().sum()}")
-    logger.info(f"\nData types:\n{df.dtypes}")
-    logger.info(f"{'=' * 60}\n")
+# German Traffic Sign class names (43 classes)
+GTSRB_CLASS_NAMES = {
+    0: "Speed limit (20km/h)",
+    1: "Speed limit (30km/h)",
+    2: "Speed limit (50km/h)",
+    3: "Speed limit (60km/h)",
+    4: "Speed limit (70km/h)",
+    5: "Speed limit (80km/h)",
+    6: "End of speed limit (80km/h)",
+    7: "Speed limit (100km/h)",
+    8: "Speed limit (120km/h)",
+    9: "No passing",
+    10: "No passing for vehicles over 3.5 metric tons",
+    11: "Right-of-way at the next intersection",
+    12: "Priority road",
+    13: "Yield",
+    14: "Stop",
+    15: "No vehicles",
+    16: "Vehicles over 3.5 metric tons prohibited",
+    17: "No entry",
+    18: "General caution",
+    19: "Dangerous curve to the left",
+    20: "Dangerous curve to the right",
+    21: "Double curve",
+    22: "Bumpy road",
+    23: "Slippery road",
+    24: "Road narrows on the right",
+    25: "Road work",
+    26: "Traffic signals",
+    27: "Pedestrians",
+    28: "Children crossing",
+    29: "Bicycles crossing",
+    30: "Beware of ice/snow",
+    31: "Wild animals crossing",
+    32: "End of all speed and passing limits",
+    33: "Turn right ahead",
+    34: "Turn left ahead",
+    35: "Ahead only",
+    36: "Go straight or right",
+    37: "Go straight or left",
+    38: "Keep right",
+    39: "Keep left",
+    40: "Roundabout mandatory",
+    41: "End of no passing",
+    42: "End of no passing by vehicles over 3.5 metric tons",
+}

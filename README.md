@@ -1,321 +1,294 @@
-# AKI Prediction from MIMIC-IV using Explainable AI
+# GTSRB Traffic Sign Classification - XAI Case Study
 
-Predict **Acute Kidney Injury (AKI)** 48 hours in advance using ICU patient data from MIMIC-IV. This project implements KDIGO clinical criteria for AKI labeling and trains both baseline and deep learning models with a focus on **explainability**.
+**Explainable AI Final Project**  
+German Traffic Sign Recognition Benchmark (GTSRB)
 
-## 🎯 Project Overview
+## Project Overview
 
-**Goal**: Predict if a patient will develop moderate-to-severe AKI (KDIGO Stage 2+) within the next 48 hours based on:
-- Demographics (age, gender)
-- Vital signs (HR, BP, temperature, SpO2, etc.)
-- Laboratory values (creatinine, BUN, electrolytes, etc.)
-- Urine output
+This project implements an end-to-end Explainable AI case study for traffic sign classification using the GTSRB dataset. I train four models (two baselines and two pretrained CNNs) and apply various XAI techniques to understand model decisions and improve performance.
 
-**Why AKI?**
-- Affects 10-15% of hospitalized patients
-- Early detection enables intervention (adjust fluids, stop nephrotoxic drugs)
-- Clear clinical criteria (KDIGO guidelines)
-- Highly interpretable features
+### Key Features
+- **Multiple Model Architectures**: Logistic Regression (HOG), Shallow CNN, MobileNetV2, ResNet18
+- **XAI Techniques**: Grad-CAM, Integrated Gradients, Occlusion Sensitivity
+- **Two-Phase Fine-tuning**: Careful fine-tuning strategy for pretrained models
+- **Comprehensive Evaluation**: Model performance metrics and XAI quality assessment
 
 ## 📁 Project Structure
 
 ```
-aki_prediction_project/
+gtsrb-xai-project/
+│
 ├── data/
-│   ├── raw/                    # Your MIMIC-IV CSV files go here
-│   │   └── mimic-iv-3.1/
-│   │       ├── hosp/
-│   │       └── icu/
-│   └── processed/              # Generated processed data
-├── src/
-│   ├── config.py               # Configuration
-│   ├── utils.py                # Utility functions
-│   ├── data_extraction.py      # Extract from MIMIC-IV
-│   ├── data_preprocessing.py   # Clean and merge data
-│   ├── label_generation.py     # KDIGO AKI labeling
-│   ├── feature_engineering.py  # Create features
-│   ├── dataset.py              # PyTorch datasets
-│   ├── models.py               # Model architectures (templates)
-│   └── training_functions.py   # Train/val/test functions
-├── run_data_pipeline.py        # Run full data pipeline
-├── main.py                     # Main training script
-├── requirements.txt
-└── README.md
+│   ├── raw/                          # Raw GTSRB dataset (from Kaggle)
+│   │   ├── Train/
+│   │   │   ├── 0/
+│   │   │   ├── 1/
+│   │   │   └── ...
+│   │   ├── Test.csv
+│   │   └── ...
+│   └── processed/                    # Preprocessed data
+│       ├── train_split.pkl
+│       ├── val_split.pkl
+│       ├── test_split.pkl
+│       ├── train_hog_features.pkl
+│       ├── val_hog_features.pkl
+│       └── test_hog_features.pkl
+│
+├── models/                           # Saved model checkpoints
+│   ├── logistic_regression.pkl
+│   ├── shallow_cnn.pth
+│   ├── mobilenet_phase1.pth
+│   ├── mobilenet_phase2.pth
+│   ├── resnet18_phase1.pth
+│   └── resnet18_phase2.pth
+│
+├── notebooks/                        # Jupyter notebooks for analysis
+│   ├── 01_data_exploration.ipynb
+│   ├── 02_model_training.ipynb
+│   ├── 03_xai_analysis.ipynb
+│   └── 04_results_visualization.ipynb
+│
+├── results/                          # Outputs and visualizations
+│   ├── figures/
+│   ├── explanations/
+│   └── metrics/
+│
+├── src/                              # Source code
+│   ├── data_preprocessing.py         # Data loading and preprocessing
+│   ├── models.py                     # Model definitions
+│   ├── train.py                      # Training pipelines
+│   ├── xai_methods.py                # XAI implementations
+│   └── utils.py                      # Utility functions
+│
+├── requirements.txt                  # Python dependencies
+├── README.md                         # This file
+└── report.pdf                        # Final project report
 ```
 
-## 🚀 Quick Start
+## Getting Started
 
-### 1. Setup Environment
+### Prerequisites
 
+- Python 3.8+
+- CUDA-capable GPU (recommended)
+- 8GB+ RAM
+
+### Installation
+
+1. **Clone the repository**
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+git clone <your-repo-url>
+cd gtsrb-xai-project
+```
 
-# Install dependencies (using uv package)
+2. **Create virtual environment (using uv package)**
+```bash
+uv venv
+source .venv/bin/activate        # macOS / Linux
+# .venv\Scripts\activate         # Windows
+```
+
+3. **Install dependencies (using uv package)**
+```bash
 uv pip install -r requirements.txt
 ```
 
-### 2. Configure Paths
+4. **Download GTSRB dataset**
+```bash
+# Install Kaggle CLI
+uv pip install kaggle
 
-Edit `config.py` to point to your MIMIC-IV data:
+# Download dataset (requires Kaggle API credentials)
+kaggle datasets download -d meowmeowmeowmeowmeow/gtsrb-german-traffic-sign
 
-```python
-mimic_root: Path = Path("data/raw/mimic-iv-3.1")
+# Extract to data/raw/
+unzip -o gtsrb-german-traffic-sign.zip -d data/raw/
+
+# remove the zip file
+rm gtsrb-german-traffic-sign.zip
 ```
 
-### 3. Run Data Pipeline
+### Data Preprocessing
 
-This extracts and processes all data (may take 30-60 minutes):
+Run the preprocessing pipeline to prepare the data:
 
 ```bash
-python run_data_pipeline.py
+python -m src.data_preprocessing
 ```
 
-**What it does:**
-1. Extracts ICU stays, patients, vitals, labs, urine output
-2. Cleans and preprocesses time series data
-3. Generates AKI labels using KDIGO criteria
-4. Engineers features (rolling statistics, derived features)
-5. Saves processed data to `data/processed/`
+This will:
+- Load the raw GTSRB images
+- Create train/validation/test splits (70%/15%/15%)
+- Extract HOG features for logistic regression
+- Save processed data to `data/processed/`
 
-### 4. Train Models
+**Expected Output:**
+- Train/val/test splits saved as pickle files
+- HOG features extracted and saved
+- Dataset statistics printed to console
+
+## Training Models
+
+### Train All Models
+
+Run the complete training pipeline:
 
 ```bash
-python main.py
+python -m src.train.py
 ```
 
-**Models trained:**
-- Logistic Regression (baseline)
-- Random Forest (baseline)
-- XGBoost (strong baseline)
-- MLP (Multi-Layer Perceptron)
-- LSTM (sequential model)
-- Attention LSTM (explainable sequential model)
+This trains:
+1. **Logistic Regression** on HOG features (~10 min)
+2. **Shallow CNN** from scratch (~30 min)
+3. **MobileNetV2** with two-phase fine-tuning (~1 hour)
+4. **ResNet18** with two-phase fine-tuning (~1 hour)
 
-Results saved to `results/[timestamp]/`
+### Training Phases (Pretrained Models)
 
-## 📊 Data Pipeline Details
+**Phase 1: Feature Extractor Mode (5-10 epochs)**
+- Freeze all convolutional layers
+- Train only the classifier head
+- Higher learning rate (1e-3)
 
-### KDIGO AKI Criteria
+**Phase 2: Partial Fine-tuning (10-15 epochs)**
+- Unfreeze last 1-2 blocks (MobileNetV2) or last residual block (ResNet18)
+- Lower learning rate (1e-4)
+- Fine-tune with careful regularization
 
-AKI is defined by **creatinine** and **urine output** criteria:
+### Model Checkpoints
 
-**Creatinine:**
-- Stage 1: ≥0.3 mg/dL increase in 48h OR 1.5-1.9× baseline
-- Stage 2: 2.0-2.9× baseline
-- Stage 3: ≥3.0× baseline OR ≥4.0 mg/dL
+Models are saved to `models/` directory:
+- Best validation accuracy checkpoint
+- Phase 1 and Phase 2 checkpoints for pretrained models
+- Training curves saved as PNG files
 
-**Urine Output:**
-- Stage 1: <0.5 mL/kg/h for 6-12 hours
-- Stage 2: <0.5 mL/kg/h for ≥12 hours
-- Stage 3: <0.3 mL/kg/h for ≥24 hours OR anuria ≥12h
+## XAI Analysis
 
-Overall AKI stage = max(creatinine_stage, urine_stage)
+### XAI Methods Implemented
 
-### Features
+#### 1. **Grad-CAM** (Global & Local)
+- **Global**: Aggregated heatmaps across samples of the same class
+- **Local**: Individual prediction explanations
+- Target layer: Last convolutional layer
 
-**Static Features:**
-- Age, gender, admission type
+#### 2. **Integrated Gradients**
+- Attribution to input features
+- 50 integration steps
+- Black image baseline
 
-**Vital Signs** (rolling 6h, 12h, 24h statistics):
-- Heart rate, blood pressure, respiratory rate
-- Temperature, SpO2, glucose
+#### 3. **Occlusion Sensitivity**
+- 8x8 pixel occlusion window
+- 4-pixel stride
+- Measures prediction change
 
-**Laboratory Values** (rolling statistics + trends):
-- Creatinine, BUN, electrolytes
-- Hemoglobin, WBC, platelets
+### Running XAI Analysis
 
-**Derived Features:**
-- Shock index (HR/SBP)
-- BUN/Creatinine ratio
-- Pulse pressure
-- Missing data indicators
+Use the provided notebooks:
 
-**Temporal Features:**
-- Hour since admission
-- Hour of day, day/night
-- Days since admission
+```bash
+jupyter notebook notebooks/03_xai_analysis.ipynb
+```
 
-## 🎓 Model Implementation Guide
-
-The `models.py` file contains **templates** with docstrings. You should implement:
-
-### Baseline Models (sklearn)
+Or create your own analysis scripts using the XAI classes:
 
 ```python
-# LogisticRegressionModel
-# - Initialize with class_weight='balanced'
-# - Good baseline, fast training
+from xai_methods import GradCAM, IntegratedGradients, OcclusionSensitivity
+from models import get_model
 
-# RandomForestModel  
-# - n_estimators=100, max_depth=10
-# - Returns feature importances
+# Load model
+model = get_model('mobilenet', pretrained=False)
+model.load_state_dict(torch.load('models/mobilenet_phase2.pth'))
 
-# XGBoostModel
-# - Best baseline model
-# - Use scale_pos_weight for imbalance
-# - Early stopping on validation set
+# Create XAI instances
+gradcam = GradCAM(model, target_layer)
+ig = IntegratedGradients(model)
+occlusion = OcclusionSensitivity(model)
+
+# Generate explanations
+heatmap = gradcam.generate_cam(input_tensor, target_class)
+attribution = ig.generate_attribution(input_tensor, target_class)
+sensitivity = occlusion.generate_sensitivity_map(input_tensor, target_class)
 ```
 
-### Deep Learning Models (PyTorch)
+## Expected Results
 
-```python
-# MLPModel
-# - Feedforward network: Input -> [256,128,64] -> Output
-# - BatchNorm + Dropout for regularization
+### Model Performance (Approximate)
 
-# LSTMModel
-# - Captures temporal patterns
-# - Input: (batch, seq_length=24, features)
+| Model | Accuracy | F1 Score |
+|-------|----------|----------|
+| Logistic Regression (HOG) | ~85% | ~0.83 |
+| Shallow CNN | ~92% | ~0.91 |
+| MobileNetV2 (fine-tuned) | ~96% | ~0.95 |
+| ResNet18 (fine-tuned) | ~97% | ~0.96 |
 
-# AttentionLSTM
-# - LSTM + attention mechanism
-# - Returns attention weights for explainability!
+### XAI Insights
+
+- **Global explanations**: Identify common visual patterns per sign class
+- **Local explanations**: Understand individual prediction decisions
+- **Method comparison**: Spatial correlation between Grad-CAM, IG, and Occlusion
+- **Actionable insights**: Model improvements based on explanation analysis
+
+## Project Goals
+
+### Completed TODOs
+
+You will need to complete the following TODOs in the codebase:
+
+1. **models.py**: Implement model architectures and training logic
+2. **train.py**: Complete training loops and optimization steps
+3. **xai_methods.py**: Implement XAI algorithms (Grad-CAM, IG, Occlusion)
+
+### Analysis & Report
+
+After implementing the TODOs and training models:
+
+1. Generate XAI explanations for test samples
+2. Analyze explanation quality and faithfulness
+3. Compare different XAI methods
+4. Derive actionable insights for model improvement
+5. Write final report (max 8 pages)
+
+## Requirements
+
+See `requirements.txt` for full dependencies. Key libraries:
+
+```
+torch>=1.10.0
+torchvision>=0.11.0
+numpy>=1.21.0
+pandas>=1.3.0
+scikit-learn>=1.0.0
+scikit-image>=0.19.0
+opencv-python>=4.5.0
+matplotlib>=3.4.0
+seaborn>=0.11.0
+tqdm>=4.62.0
+jupyter>=1.0.0
 ```
 
-## 📈 Evaluation Metrics
+## Academic Integrity
 
-Focus on these metrics (in order of importance):
+- All external code and resources are properly cited
+- Open-source libraries and pretrained models are used with attribution
+- Original analysis and explanations written by project author
+- Understanding of all implementation steps
 
-1. **AUPRC** (Area Under Precision-Recall Curve)
-   - More important than AUC-ROC for imbalanced data
-   - Emphasizes performance on positive class
+## References
 
-2. **AUC-ROC** (Area Under ROC Curve)
-   - Overall discriminative ability
+- GTSRB Dataset: [Kaggle](https://www.kaggle.com/datasets/meowmeowmeowmeowmeow/gtsrb-german-traffic-sign)
+- Grad-CAM: Selvaraju et al., "Grad-CAM: Visual Explanations from Deep Networks via Gradient-based Localization"
+- Integrated Gradients: Sundararajan et al., "Axiomatic Attribution for Deep Networks"
+- MobileNetV2: Sandler et al., "MobileNetV2: Inverted Residuals and Linear Bottlenecks"
+- ResNet: He et al., "Deep Residual Learning for Image Recognition"
 
-3. **Recall @ High Precision**
-   - Clinical priority: catch AKI cases (high recall)
-   - Without too many false alarms (precision)
+## Contact
 
-4. **Calibration**
-   - Are predicted probabilities accurate?
+For questions or issues, please contact manuel.rodriguezvillegas09@gmail.com
 
-## 🔍 Explainability Analysis
+---
 
-After training, analyze your models:
+**Last Updated**: December 2025
 
-### 1. Feature Importance (XGBoost/RF)
+**Course**: Ética y Explicabilidad de la Inteligencia Artificial (Ethics and Explainability of Artificial Intelligence)
 
-```python
-importance = xgb_model.get_feature_importance()
-# Plot top 20 features
-```
-
-### 2. SHAP Values
-
-```python
-import shap
-
-# Global importance
-explainer = shap.TreeExplainer(xgb_model)
-shap_values = explainer.shap_values(X_test)
-shap.summary_plot(shap_values, X_test)
-
-# Individual prediction
-shap.force_plot(explainer.expected_value, shap_values[i], X_test[i])
-```
-
-### 3. Attention Weights (for Attention LSTM)
-
-```python
-# Extract attention weights during forward pass
-predictions, attention_weights = model(x)
-
-# Visualize which hours were most important
-plt.plot(attention_weights[0].detach().cpu())
-```
-
-## 🎯 Project Extensions
-
-Once you have a working model:
-
-1. **Temporal Analysis**: How does prediction accuracy change with prediction horizon (24h vs 48h)?
-
-2. **Subgroup Analysis**: Does model perform differently for:
-   - Different age groups
-   - Medical vs surgical patients
-   - Different baseline kidney function
-
-3. **Clinical Validation**: Compare to clinical scores (SOFA, APACHE)
-
-4. **Intervention Analysis**: What interventions could have prevented AKI?
-
-5. **Real-time Dashboard**: Build web app for real-time risk monitoring
-
-## ⚠️ Important Notes
-
-### Memory Management
-
-MIMIC-IV is large! The code uses:
-- Chunked reading for large files
-- Memory reduction via dtype optimization
-- Parquet format for efficient storage
-
-If you run out of memory:
-- Reduce `max_icu_stays` in config.py for testing
-- Increase `chunk_size` in extraction functions
-- Use a subset of features
-
-### Data Leakage Prevention
-
-- Split by `stay_id`, not by individual observations
-- No future data in features
-- Forward fill only (never backward fill)
-
-### Class Imbalance
-
-AKI Stage 2+ is rare (~5-15% of cases). Handle with:
-- `class_weight='balanced'` in sklearn models
-- `scale_pos_weight` in XGBoost
-- Weighted loss functions in PyTorch
-- Focus on AUPRC over accuracy
-
-## 📚 References
-
-1. **KDIGO Clinical Practice Guideline for AKI**  
-   Kidney Disease: Improving Global Outcomes (2012)
-
-2. **MIMIC-IV Documentation**  
-   https://mimic.mit.edu/docs/iv/
-
-3. **pyAKI Implementation**  
-   https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0315325
-
-## 🤝 Contributing
-
-This is your project! Customize:
-- Prediction windows (24h, 36h, 72h)
-- Target AKI stages (Stage 1 vs 2+)
-- Feature engineering approaches
-- Model architectures
-- Explainability methods
-
-## 📝 License
-
-Follow MIMIC-IV data use agreement and citation requirements.
-
-## 🆘 Troubleshooting
-
-**Issue**: "File not found" errors  
-**Fix**: Check paths in `config.py` match your MIMIC-IV structure
-
-**Issue**: Out of memory  
-**Fix**: Set `max_icu_stays=1000` in config.py for testing
-
-**Issue**: Slow data extraction  
-**Fix**: This is normal! chartevents is huge. First run takes time.
-
-**Issue**: Low AUC scores  
-**Fix**: Check class balance, try different models, tune hyperparameters
-
-## ✅ Success Criteria
-
-A successful project should achieve:
-- [ ] AUPRC > 0.25 (significantly better than baseline ~0.10)
-- [ ] AUC-ROC > 0.75
-- [ ] Clear explainability analysis
-- [ ] Comparison of multiple models
-- [ ] Well-documented code and results
-
-Good luck with your project! 🎓
+**Academic Year**: 2025/2026
