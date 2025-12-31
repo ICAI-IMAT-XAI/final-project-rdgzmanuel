@@ -7,7 +7,9 @@ German Traffic Sign Recognition Benchmark (GTSRB)
 
 This project implements an end-to-end Explainable AI case study for traffic sign classification using the GTSRB dataset. I train four models (two baselines and two pretrained CNNs) and apply various XAI techniques to understand model decisions and improve performance.
 
-[![Report Cover](maxreddefault.jpg)](report.pdf)
+<a href="report.pdf" target="_blank">
+  <img src="maxresdefault.jpg" alt="Report Cover" width="300">
+</a>
 
 ### Key Features
 - **Multiple Model Architectures**: Logistic Regression (HOG), Shallow CNN, MobileNetV2, ResNet18
