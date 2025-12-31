@@ -2,6 +2,12 @@
 data/
 gtsrb-german-traffic-sign.zip
 
+# Models folder
+models/
+
+# Images folder
+images/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

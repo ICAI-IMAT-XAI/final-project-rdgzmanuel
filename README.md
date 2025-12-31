@@ -101,8 +101,8 @@ uv pip install kaggle
 # Download dataset (requires Kaggle API credentials)
 kaggle datasets download -d meowmeowmeowmeowmeow/gtsrb-german-traffic-sign
 
-# Extract to data/raw/
-unzip -o gtsrb-german-traffic-sign.zip -d data/raw/
+# Create data directory and extract to data/raw/
+mkdir -p data/raw && unzip -o gtsrb-german-traffic-sign.zip -d data/raw/
 
 # remove the zip file
 rm gtsrb-german-traffic-sign.zip
@@ -134,7 +134,7 @@ This will:
 Run the complete training pipeline:
 
 ```bash
-python -m src.train.py
+python -m src.train
 ```
 
 This trains:

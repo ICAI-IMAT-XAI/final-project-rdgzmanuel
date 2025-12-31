@@ -31,9 +31,9 @@ class GTSRBConfig:
     NORMALIZE_STD: tuple[float, float, float] = (0.2724, 0.2608, 0.2669)
 
     # HOG parameters
-    HOG_ORIENTATIONS: int = 9
-    HOG_PIXELS_PER_CELL: tuple[int, int] = (8, 8)
-    HOG_CELLS_PER_BLOCK: tuple[int, int] = (2, 2)
+    HOG_ORIENTATIONS: int = 9  # 4
+    HOG_PIXELS_PER_CELL: tuple[int, int] = (8, 8)  # (16, 16)
+    HOG_CELLS_PER_BLOCK: tuple[int, int] = (2, 2)  # (1, 1)
 
     # Dataset splits
     VAL_SIZE: float = 0.15

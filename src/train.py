@@ -15,8 +15,8 @@ from sklearn.metrics import accuracy_score, f1_score
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
-from data_preprocessing import GTSRBConfig, GTSRBDataset, get_transforms, load_splits
-from models import LogisticRegressionHOG, get_model
+from src.data_preprocessing import GTSRBConfig, GTSRBDataset, get_transforms, load_splits
+from src.models import LogisticRegressionHOG, get_model
 
 
 class Trainer:
@@ -69,15 +69,10 @@ class Trainer:
         for images, labels in pbar:
             images, labels = images.to(self.device), labels.to(self.device)
 
-            # TODO: Forward pass
-            # Get predictions from model
             outputs: torch.Tensor = self.model(images)
 
-            # TODO: Compute loss
             loss: torch.Tensor = self.criterion(outputs, labels)
 
-            # TODO: Backward pass and optimization
-            # Zero gradients, backward, optimizer step
             self.optimizer.zero_grad()
 
             loss.backward()
@@ -115,10 +110,8 @@ class Trainer:
             for images, labels in tqdm(val_loader, desc="Validating"):
                 images, labels = images.to(self.device), labels.to(self.device)
 
-                # TODO: Forward pass (no gradients needed)
                 outputs: torch.Tensor = self.model(images)
 
-                # TODO: Compute loss
                 loss: torch.Tensor = self.criterion(outputs, labels)
 
                 total_loss += loss.item()
@@ -199,7 +192,7 @@ class Trainer:
 
 
 def evaluate_model(
-    model: nn.Module, test_loader: DataLoader, device: str = "cuda"
+    model: nn.Module, test_loader: DataLoader, device: str = "cuda", logistic: bool = False
 ) -> dict[str, float]:
     """
     Evaluate model on test set.
@@ -212,9 +205,11 @@ def evaluate_model(
     Returns:
         Dictionary of metrics
     """
-    model.eval()
-    all_preds = []
-    all_labels = []
+    if not logistic:
+        model.eval()
+
+    all_preds: list[np.ndarray] = []
+    all_labels: list[np.ndarray] = []
 
     with torch.no_grad():
         for images, labels in tqdm(test_loader, desc="Testing"):
@@ -228,7 +223,6 @@ def evaluate_model(
     all_preds: np.ndarray = np.array(all_preds)
     all_labels: np.ndarray = np.array(all_labels)
 
-    # Compute metrics
     accuracy: float = accuracy_score(all_labels, all_preds)
     f1_macro: float = f1_score(all_labels, all_preds, average="macro")
     f1_weighted: float = f1_score(all_labels, all_preds, average="weighted")
@@ -269,22 +263,22 @@ def train_logistic_regression(
     _, y_train = splits["train"]
     _, y_val = splits["val"]
 
-    # TODO: Initialize and train LogisticRegressionHOG
     model: LogisticRegressionHOG = LogisticRegressionHOG(
         num_classes=GTSRBConfig.NUM_CLASSES
     )
     model.train(X_train, y_train)
 
-    # TODO: Evaluate on validation set
     y_val_pred: np.ndarray = model.predict(X_val)
-    val_acc: float = accuracy_score(y_val, y_val_pred)  # Calculate accuracy
-    print(f"Validation Accuracy: {val_acc:.4f}")
+    accuracy: float = accuracy_score(y_val, y_val_pred)
+    f1_macro: float = f1_score(y_val, y_val_pred, average="macro")
+    f1_weighted: float = f1_score(y_val, y_val_pred, average="weighted")
+    
+    metrics = {"accuracy": accuracy, "f1_macro": f1_macro, "f1_weighted": f1_weighted}
 
-    # Save model
     with open(save_path, "wb") as f:
         pickle.dump(model, f)
 
-    return model
+    return model, metrics
 
 
 def train_pretrained_model(
@@ -293,6 +287,7 @@ def train_pretrained_model(
     val_loader: DataLoader,
     model_name: str,
     save_dir: Path,
+    images_dir: Path,
     device: str = "cuda",
 ) -> None:
     """
@@ -310,64 +305,66 @@ def train_pretrained_model(
         device: Device
     """
     save_dir.mkdir(parents=True, exist_ok=True)
+    images_dir.mkdir(parents=True, exist_ok=True)
 
     # Phase 1: Feature extractor mode
-    print("\n" + "=" * 60)
     print("PHASE 1: Feature Extractor Mode (Frozen Backbone)")
-    print("=" * 60)
 
-    # TODO: Freeze backbone
+    lr_1: float = 1e-3
+    wd_1: float = 1e-4
+    epochs_1: int = 20
+
     model.freeze_backbone()
 
-    # TODO: Create trainer with higher learning rate for phase 1
     trainer_phase1 = Trainer(
         model,
         device=device,
-        learning_rate=1e-3,  # Higher LR for new classifier head
-        weight_decay=1e-4,
+        learning_rate=lr_1,
+        weight_decay=wd_1,
     )
 
     # Train phase 1
     trainer_phase1.train(
         train_loader,
         val_loader,
-        num_epochs=8,
+        num_epochs=epochs_1,
         save_path=save_dir / f"{model_name}_phase1.pth",
     )
 
     # Plot phase 1 metrics
-    trainer_phase1.plot_metrics(save_dir / f"{model_name}_phase1_metrics.png")
+    trainer_phase1.plot_metrics(images_dir / f"{model_name}_phase1_metrics.png")
 
     # Phase 2: Partial fine-tuning
     print("PHASE 2: Partial Fine-tuning (Unfreeze Last Blocks)")
+    lr_2: float = 1e-4
+    wd_2: float = 1e-4
+    epochs_2: int = 60
 
-    # TODO: Unfreeze last blocks based on model type
     if model_name == "mobilenet":
         model.unfreeze_last_blocks(num_blocks=2)
     elif model_name == "resnet18":
         model.unfreeze_last_block()
 
-    # TODO: Create new trainer with lower learning rate for phase 2
     trainer_phase2 = Trainer(
         model,
         device=device,
-        learning_rate=1e-4,  # Lower LR for fine-tuning
-        weight_decay=1e-4,
+        learning_rate=lr_2,
+        weight_decay=wd_2,
     )
 
     # Train phase 2
     trainer_phase2.train(
         train_loader,
         val_loader,
-        num_epochs=12,
+        num_epochs=epochs_2,
         save_path=save_dir / f"{model_name}_phase2.pth",
     )
 
     # Plot phase 2 metrics
-    trainer_phase2.plot_metrics(save_dir / f"{model_name}_phase2_metrics.png")
+    trainer_phase2.plot_metrics(images_dir / f"{model_name}_phase2_metrics.png")
 
 
-def main() -> None:
+def main(model_name: str | None = None) -> None:
     """Main training script."""
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -376,6 +373,9 @@ def main() -> None:
     # Create directories
     models_dir = Path("models")
     models_dir.mkdir(exist_ok=True)
+
+    images_dir = Path("images")
+    images_dir.mkdir(exist_ok=True)
 
     # Load data splits
     splits = load_splits(GTSRBConfig.PROCESSED_DIR)
@@ -394,88 +394,81 @@ def main() -> None:
     train_loader = DataLoader(train_dataset, batch_size=64, shuffle=True, num_workers=4)
     val_loader = DataLoader(val_dataset, batch_size=64, shuffle=False, num_workers=4)
     test_loader = DataLoader(test_dataset, batch_size=64, shuffle=False, num_workers=4)
+    
+    if model_name == "logistic" or not model_name:
+        # 1. Train Logistic Regression
+        print("\n" + "=" * 60)
+        print("Training Logistic Regression")
+        print("=" * 60)
+        lr_model, metrics = train_logistic_regression(
+            GTSRBConfig.PROCESSED_DIR, models_dir / "logistic_regression.pkl"
+        )
 
-    # 1. Train Logistic Regression
-    print("\n" + "=" * 60)
-    print("Training Logistic Regression")
-    print("=" * 60)
-    lr_model = train_logistic_regression(
-        GTSRBConfig.PROCESSED_DIR, models_dir / "logistic_regression.pkl"
-    )
+        print(f"Logistic Regression: {metrics}")
+    
+    if model_name == "cnn" or not model_name:
+        print("Training Shallow CNN")
+        lr: float = 1e-3
+        epochs: int = 90
 
-    # 2. Train Shallow CNN
-    print("\n" + "=" * 60)
-    print("Training Shallow CNN")
-    print("=" * 60)
-    shallow_cnn: nn.Module = get_model("shallow_cnn", device=device)
-    trainer_cnn = Trainer(shallow_cnn, device=device, learning_rate=1e-3)
-    trainer_cnn.train(
-        train_loader,
-        val_loader,
-        num_epochs=30,
-        save_path=models_dir / "shallow_cnn.pth",
-    )
-    trainer_cnn.plot_metrics(models_dir / "shallow_cnn_metrics.png")
+        shallow_cnn: nn.Module = get_model("shallow_cnn", device=device)
+        trainer_cnn = Trainer(shallow_cnn, device=device, learning_rate=lr)
+        trainer_cnn.train(
+            train_loader,
+            val_loader,
+            num_epochs=epochs,
+            save_path=models_dir / "shallow_cnn.pth",
+        )
+        trainer_cnn.plot_metrics(images_dir / "shallow_cnn_metrics.png")
 
-    # 3. Train MobileNetV2
-    print("\n" + "=" * 60)
-    print("Training MobileNetV2")
-    print("=" * 60)
-    mobilenet: nn.Module = get_model("mobilenet", pretrained=True, device=device)
-    train_pretrained_model(
-        mobilenet, train_loader, val_loader, "mobilenet", models_dir, device
-    )
+        shallow_cnn.load_state_dict(
+            torch.load(models_dir / "shallow_cnn.pth", map_location=device)
+        )
+        cnn_metrics: dict[str, float] = evaluate_model(
+            shallow_cnn, test_loader, device=device
+        )
 
-    # 4. Train ResNet18
-    print("\n" + "=" * 60)
-    print("Training ResNet18")
-    print("=" * 60)
-    resnet: nn.Module = get_model("resnet18", pretrained=True, device=device)
-    train_pretrained_model(
-        resnet, train_loader, val_loader, "resnet18", models_dir, device
-    )
+        print(f"Shallow CNN: {cnn_metrics}")
+    
+    if model_name == "mobilenet" or not model_name:
+        print("Training MobileNetV2")
+        mobilenet: nn.Module = get_model("mobilenet", pretrained=True, device=device)
+        train_pretrained_model(
+            mobilenet, train_loader, val_loader, "mobilenet", models_dir, images_dir, device
+        )
 
-    # Evaluate all models
-    print("\n" + "=" * 60)
-    print("Final Evaluation on Test Set")
-    print("=" * 60)
+        mobilenet.load_state_dict(
+            torch.load(models_dir / "mobilenet_phase2.pth", map_location=device)
+        )
+        mobilenet_metrics: dict[str, float] = evaluate_model(
+            mobilenet, test_loader, device=device
+        )
 
-    # TODO: Load best models and evaluate
-    # For each model, load weights and run evaluate_model()
+        print(f"MobileNetV2: {mobilenet_metrics}")
+    
+    if model_name == "resnet" or not model_name:
+        print("Training ResNet18")
+        resnet: nn.Module = get_model("resnet18", pretrained=True, device=device)
+        train_pretrained_model(
+            resnet, train_loader, val_loader, "resnet18", models_dir, images_dir, device
+        )
 
-    lr_metrics: dict[str, float] = evaluate_model(lr_model, test_loader, device=device)
+        resnet.load_state_dict(
+            torch.load(models_dir / "resnet18_phase2.pth", map_location=device)
+        )
+        resnet_metrics: dict[str, float] = evaluate_model(
+            resnet, test_loader, device=device
+        )
 
-    shallow_cnn.load_state_dict(
-        torch.load(models_dir / "shallow_cnn.pth", map_location=device)
-    )
-    cnn_metrics: dict[str, float] = evaluate_model(
-        shallow_cnn, test_loader, device=device
-    )
-
-    mobilenet.load_state_dict(
-        torch.load(models_dir / "mobilenet_phase2.pth", map_location=device)
-    )
-    mobilenet_metrics: dict[str, float] = evaluate_model(
-        mobilenet, test_loader, device=device
-    )
-
-    resnet.load_state_dict(
-        torch.load(models_dir / "resnet18_phase2.pth", map_location=device)
-    )
-    resnet_metrics: dict[str, float] = evaluate_model(
-        resnet, test_loader, device=device
-    )
-
-    # Summarize results
-    print("\n" + "=" * 60)
-    print("Summary of Test Results:")
-    print(f"Logistic Regression: {lr_metrics}")
-    print(f"Shallow CNN: {cnn_metrics}")
-    print(f"MobileNetV2: {mobilenet_metrics}")
-    print(f"ResNet18: {resnet_metrics}")
+        print(f"ResNet18: {resnet_metrics}")
 
     return None
 
 
 if __name__ == "__main__":
-    main()
+    model: str = "logistic"
+    # model: str = "cnn"
+    # model: str = "mobilenet"
+    # model: str = "resnet"
+
+    main(model)

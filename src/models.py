@@ -19,7 +19,7 @@ class LogisticRegressionHOG:
     """Logistic Regression classifier for HOG features."""
 
     def __init__(
-        self, num_classes: int = 43, max_iter: int = 1000, random_state: int = 42
+        self, num_classes: int = 43, max_iter: int = 1000, random_state: int = 42, C: float = 0.1
     ) -> None:
         """
         Initialize Logistic Regression model.
@@ -29,10 +29,10 @@ class LogisticRegressionHOG:
             max_iter: Maximum iterations for optimization
             random_state: Random seed
         """
-        # TODO: Initialize sklearn LogisticRegression with appropriate parameters
-        # multi_class='multinomial' and solver='lbfgs' for multiclass
         self.model: LogisticRegression = LogisticRegression(
-            solver="lbfgs",
+            solver="saga",
+            l1_ratio=1.0,
+            C=C,
             max_iter=max_iter,
             random_state=random_state,
         )
@@ -46,7 +46,6 @@ class LogisticRegressionHOG:
             X_train: Training features (HOG vectors)
             y_train: Training labels
         """
-        # TODO: Fit the logistic regression model on training data
         self.model.fit(X_train, y_train)
 
     def predict(self, X: np.ndarray) -> np.ndarray:
@@ -59,7 +58,6 @@ class LogisticRegressionHOG:
         Returns:
             Predicted class labels
         """
-        # TODO: Return predictions using self.model.predict()
         return self.model.predict(X)
 
     def predict_proba(self, X: np.ndarray) -> np.ndarray:
@@ -72,7 +70,6 @@ class LogisticRegressionHOG:
         Returns:
             Class probabilities
         """
-        # TODO: Return probability predictions using self.model.predict_proba()
         return self.model.predict_proba(X)
 
 
@@ -97,7 +94,7 @@ class ShallowCNN(nn.Module):
                 padding=2,
                 bias=False,
             ),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.MaxPool2d(kernel_size=2),
             nn.Conv2d(
                 in_channels=32,
@@ -106,7 +103,7 @@ class ShallowCNN(nn.Module):
                 padding=1,
                 bias=False,
             ),
-            nn.ReLU(inplace=True),
+            nn.ReLU(inplace=False),
             nn.MaxPool2d(kernel_size=2),
         )
 
@@ -163,28 +160,20 @@ class PretrainedMobileNetV2(nn.Module):
         """
         super().__init__()
 
-        # TODO: Load pretrained MobileNetV2 from torchvision
         weights: MobileNet_V2_Weights = (
             MobileNet_V2_Weights.IMAGENET1K_V1 if pretrained else None
         )
         self.model: nn.Module = mobilenet_v2(weights=weights)
 
-        # TODO: Replace the classifier head
-        # Original classifier is self.model.classifier[1]
-        # Replace it with a new Linear layer for num_classes
-        # Get input features from self.model.last_channel (typically 1280)
         input_features: int = self.model.last_channel
         self.model.classifier[1] = nn.Linear(input_features, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass."""
-        # TODO: Pass input through self.model
         return self.model(x)
 
     def freeze_backbone(self) -> None:
         """Freeze all layers except classifier head."""
-        # TODO: Freeze all parameters in self.model.features
-        # Set requires_grad=False for all parameters except classifier
         for param in self.model.features.parameters():
             param.requires_grad_(False)
 
@@ -198,10 +187,6 @@ class PretrainedMobileNetV2(nn.Module):
         Args:
             num_blocks: Number of inverted residual blocks to unfreeze
         """
-        # TODO: Unfreeze the last num_blocks inverted residual blocks
-        # MobileNetV2 features are in self.model.features
-        # The blocks are indexed from the end: self.model.features[-N:]
-        # Set requires_grad=True for parameters in these blocks
         total_blocks: int = len(self.model.features)
 
         if num_blocks > total_blocks:
@@ -225,28 +210,20 @@ class PretrainedResNet18(nn.Module):
         """
         super().__init__()
 
-        # TODO: Load pretrained ResNet18 from torchvision
         weights: ResNet18_Weights = (
             ResNet18_Weights.IMAGENET1K_V1 if pretrained else None
         )
         self.model: nn.Module = resnet18(weights=weights)
 
-        # TODO: Replace the fc layer
-        # Get input features from self.model.fc.in_features (typically 512)
-        # Replace self.model.fc with new Linear layer for num_classes
         input_features: int = self.model.fc.in_features
         self.model.fc = nn.Linear(input_features, num_classes)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         """Forward pass."""
-        # TODO: Pass input through self.model
         return self.model(x)
 
     def freeze_backbone(self) -> None:
         """Freeze all layers except fc head."""
-        # TODO: Freeze all parameters except self.model.fc
-        # Iterate through all parameters and set requires_grad=False
-        # Then set requires_grad=True for fc parameters
         for param in self.model.parameters():
             param.requires_grad_(False)
 
@@ -255,8 +232,6 @@ class PretrainedResNet18(nn.Module):
 
     def unfreeze_last_block(self) -> None:
         """Unfreeze the last residual block (layer4) for fine-tuning."""
-        # TODO: Unfreeze layer4 (last residual block)
-        # Set requires_grad=True for all parameters in self.model.layer4
         for param in self.model.layer4.parameters():
             param.requires_grad_(True)
 
