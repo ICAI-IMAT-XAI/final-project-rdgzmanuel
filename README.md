@@ -7,13 +7,15 @@ German Traffic Sign Recognition Benchmark (GTSRB)
 
 This project implements an end-to-end Explainable AI case study for traffic sign classification using the GTSRB dataset. I train four models (two baselines and two pretrained CNNs) and apply various XAI techniques to understand model decisions and improve performance.
 
+[![Report Cover](maxreddefault.jpg)](report.pdf)
+
 ### Key Features
 - **Multiple Model Architectures**: Logistic Regression (HOG), Shallow CNN, MobileNetV2, ResNet18
 - **XAI Techniques**: Grad-CAM, Integrated Gradients, Occlusion Sensitivity
 - **Two-Phase Fine-tuning**: Careful fine-tuning strategy for pretrained models
 - **Comprehensive Evaluation**: Model performance metrics and XAI quality assessment
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 gtsrb-xai-project/
@@ -43,15 +45,10 @@ gtsrb-xai-project/
 │   └── resnet18_phase2.pth
 │
 ├── notebooks/                        # Jupyter notebooks for analysis
-│   ├── 01_data_exploration.ipynb
-│   ├── 02_model_training.ipynb
-│   ├── 03_xai_analysis.ipynb
-│   └── 04_results_visualization.ipynb
+│   ├── test_implementation.ipynb
+│   └── xai_explanations.ipynb
 │
-├── results/                          # Outputs and visualizations
-│   ├── figures/
-│   ├── explanations/
-│   └── metrics/
+├── images/                          # Outputs and visualizations
 │
 ├── src/                              # Source code
 │   ├── data_preprocessing.py         # Data loading and preprocessing
@@ -69,7 +66,7 @@ gtsrb-xai-project/
 
 ### Prerequisites
 
-- Python 3.8+
+- Python 3.11
 - CUDA-capable GPU (recommended)
 - 8GB+ RAM
 
@@ -160,6 +157,8 @@ This trains:
 Models are saved to `models/` directory:
 - Best validation accuracy checkpoint
 - Phase 1 and Phase 2 checkpoints for pretrained models
+
+Images are saved to the `images/` directory:
 - Training curves saved as PNG files
 
 ## XAI Analysis
@@ -186,67 +185,15 @@ Models are saved to `models/` directory:
 Use the provided notebooks:
 
 ```bash
-jupyter notebook notebooks/03_xai_analysis.ipynb
+jupyter notebook notebooks/xai_explanations.ipynb
 ```
 
-Or create your own analysis scripts using the XAI classes:
-
-```python
-from xai_methods import GradCAM, IntegratedGradients, OcclusionSensitivity
-from models import get_model
-
-# Load model
-model = get_model('mobilenet', pretrained=False)
-model.load_state_dict(torch.load('models/mobilenet_phase2.pth'))
-
-# Create XAI instances
-gradcam = GradCAM(model, target_layer)
-ig = IntegratedGradients(model)
-occlusion = OcclusionSensitivity(model)
-
-# Generate explanations
-heatmap = gradcam.generate_cam(input_tensor, target_class)
-attribution = ig.generate_attribution(input_tensor, target_class)
-sensitivity = occlusion.generate_sensitivity_map(input_tensor, target_class)
-```
-
-## Expected Results
-
-### Model Performance (Approximate)
-
-| Model | Accuracy | F1 Score |
-|-------|----------|----------|
-| Logistic Regression (HOG) | ~85% | ~0.83 |
-| Shallow CNN | ~92% | ~0.91 |
-| MobileNetV2 (fine-tuned) | ~96% | ~0.95 |
-| ResNet18 (fine-tuned) | ~97% | ~0.96 |
 
 ### XAI Insights
 
 - **Global explanations**: Identify common visual patterns per sign class
 - **Local explanations**: Understand individual prediction decisions
 - **Method comparison**: Spatial correlation between Grad-CAM, IG, and Occlusion
-- **Actionable insights**: Model improvements based on explanation analysis
-
-## Project Goals
-
-### Completed TODOs
-
-You will need to complete the following TODOs in the codebase:
-
-1. **models.py**: Implement model architectures and training logic
-2. **train.py**: Complete training loops and optimization steps
-3. **xai_methods.py**: Implement XAI algorithms (Grad-CAM, IG, Occlusion)
-
-### Analysis & Report
-
-After implementing the TODOs and training models:
-
-1. Generate XAI explanations for test samples
-2. Analyze explanation quality and faithfulness
-3. Compare different XAI methods
-4. Derive actionable insights for model improvement
-5. Write final report (max 8 pages)
 
 ## Requirements
 

@@ -61,7 +61,8 @@ def overlay_heatmap(
     """
     # Resize heatmap to match image size
     if heatmap.shape != image.shape[:2]:
-        heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]))
+        heatmap = cv2.resize(heatmap, (image.shape[1], image.shape[0]), 
+            interpolation=cv2.INTER_CUBIC)
 
     heatmap_uint8 = (heatmap * 255).astype(np.uint8)
 

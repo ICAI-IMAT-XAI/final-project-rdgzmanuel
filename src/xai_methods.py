@@ -94,7 +94,7 @@ class GradCAM:
             cam,
             size=(input_tensor.shape[2], input_tensor.shape[3]),
             mode="bilinear",
-            align_corners=False,
+            align_corners=True,
         )
 
         cam: np.ndarray = cam.squeeze().cpu().numpy()

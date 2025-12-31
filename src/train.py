@@ -338,7 +338,7 @@ def train_pretrained_model(
     print("PHASE 2: Partial Fine-tuning (Unfreeze Last Blocks)")
     lr_2: float = 1e-4
     wd_2: float = 1e-4
-    epochs_2: int = 60
+    epochs_2: int = 50
 
     if model_name == "mobilenet":
         model.unfreeze_last_blocks(num_blocks=2)
@@ -466,9 +466,9 @@ def main(model_name: str | None = None) -> None:
 
 
 if __name__ == "__main__":
-    model: str = "logistic"
+    # model: str = "logistic"
     # model: str = "cnn"
     # model: str = "mobilenet"
-    # model: str = "resnet"
+    model: str = "resnet"
 
     main(model)

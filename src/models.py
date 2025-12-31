@@ -19,7 +19,7 @@ class LogisticRegressionHOG:
     """Logistic Regression classifier for HOG features."""
 
     def __init__(
-        self, num_classes: int = 43, max_iter: int = 1000, random_state: int = 42, C: float = 0.1
+        self, num_classes: int = 43, max_iter: int = 1000, random_state: int = 42
     ) -> None:
         """
         Initialize Logistic Regression model.
@@ -30,9 +30,7 @@ class LogisticRegressionHOG:
             random_state: Random seed
         """
         self.model: LogisticRegression = LogisticRegression(
-            solver="saga",
-            l1_ratio=1.0,
-            C=C,
+            solver="lbfgs",
             max_iter=max_iter,
             random_state=random_state,
         )
