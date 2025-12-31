@@ -8,8 +8,8 @@ German Traffic Sign Recognition Benchmark (GTSRB)
 This project implements an end-to-end Explainable AI case study for traffic sign classification using the GTSRB dataset. I train four models (two baselines and two pretrained CNNs) and apply various XAI techniques to understand model decisions and improve performance.
 
 <div align="center">
-  <a href="https://github.com/ICAI-IMAT-XAI/final-project-rdgzmanuel/raw/main/report.pdf" target="_blank">
-    <img src="maxresdefault.png" alt="Project Report" width="450"/>
+  <a href="https://github.com/ICAI-IMAT-XAI/final-project-rdgzmanuel/blob/main/report.pdf" target="_blank">
+    <img src="maxresdefault.jpg" alt="Project Report" width="450"/>
   </a>
   <p>Click the image to read the project report.</p>
 </div>
